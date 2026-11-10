@@ -7,7 +7,7 @@ set -eu
 until vault status >/dev/null 2>&1; do sleep 1; done
 
 # 1. Audit device: every secret read is logged (who, which path, when; values are hashed).
-vault audit enable file file_path=stdout >/dev/null 2>&1 || true
+vault audit list 2>/dev/null | grep -q "^file/" || vault audit enable file file_path=/vault/logs/audit.log
 
 # 2. The application's policy (read one path only) and its machine identity (AppRole).
 vault policy write invoicematch-app /init/policies/invoicematch-app.hcl

@@ -54,6 +54,7 @@ c = http.client.HTTPSConnection('egress-proxy', 3128, timeout=15, context=ssl.cr
 c.set_tunnel('api.sharedllm.com', 443); c.request('GET', '/'); c.getresponse()"
 }
 key_in_container_config() { docker inspect "$(app_id)" | grep -q SHAREDLLM_KEY; }
+audit_has_app_read()      { "${COMPOSE[@]}" exec -T vault grep -q 'secret/data/invoicematch/llm' /vault/logs/audit.log; }
 key_in_repository()       { git grep -nE 'sk-sharedllm-[A-Za-z0-9-]{20,}' | grep -v placeholder; }
 
 # Run a Vault CLI command as the APPLICATION's identity (AppRole), not as an admin.
@@ -96,7 +97,7 @@ check     "App received the AI gateway key from Vault (AI is enabled)"       htt
 check     "App log shows the key was loaded from Vault (masked)"             logs_have app '"secret_loaded".*vault:secret/data/invoicematch/llm'
 check_not "The key is not in the container's configuration (docker inspect)" key_in_container_config
 check_not "No real key is stored anywhere in this repository"                key_in_repository
-check     "Vault audit log recorded the app's secret read"                   logs_have vault 'secret/data/invoicematch/llm'
+check     "Vault audit log recorded the app's secret read"                   audit_has_app_read
 
 echo "== 4. Least privilege (Vault policy for the app's identity)"
 check     "App identity CAN read its own secret"                             app_reads_own_secret

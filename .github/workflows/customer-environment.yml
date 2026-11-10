@@ -52,6 +52,9 @@ jobs:
         if: always()
         run: |
           docker compose -f customer-env/docker-compose.yml ps -a
+          echo "::group::Vault audit log (secret values are hashed by Vault)"
+          docker compose -f customer-env/docker-compose.yml exec -T vault sh -c 'tail -n 5 /vault/logs/audit.log' || true
+          echo "::endgroup::"
           for s in vault-init egress-proxy app ingress; do
             echo "::group::logs: $s"; docker compose -f customer-env/docker-compose.yml logs --no-color "$s" | tail -n 60; echo "::endgroup::"
           done
