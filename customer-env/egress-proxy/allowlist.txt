@@ -1,0 +1,5 @@
+# Egress allow-list for the InvoiceMatch application.
+# One host:port per line. Everything else is refused and logged.
+# Changes need an Information Security change ticket.
+
+api.sharedllm.com:443   # approved AI gateway (redacted invoice text only)

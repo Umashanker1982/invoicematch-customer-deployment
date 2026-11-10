@@ -1,0 +1,61 @@
+name: Customer environment check
+
+# Deploys InvoiceMatch into the simulated customer environment and verifies every
+# control: network boundaries, egress allow-list, Vault secrets, least privilege,
+# and container hardening. Runs on every push and can be started by hand.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Unit tests (egress proxy, Vault start-up wrapper)
+        run: python3 -m unittest discover -s tests -v
+
+      - name: Fetch InvoiceMatch at the pinned release
+        run: bash scripts/fetch_app.sh
+
+      - name: Create a one-time Vault root token for this run
+        run: |
+          TOKEN="$(openssl rand -hex 24)"
+          echo "::add-mask::$TOKEN"
+          echo "VAULT_ROOT_TOKEN=$TOKEN" >> "$GITHUB_ENV"
+
+      - name: Start the customer environment
+        env:
+          # Optional: add a repository secret named SHAREDLLM_KEY to also test a real AI call.
+          SEED_SHAREDLLM_KEY: ${{ secrets.SHAREDLLM_KEY }}
+        run: |
+          docker compose -f customer-env/docker-compose.yml up -d --build
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8080/healthz >/dev/null 2>&1; then echo "Ready after $((i*3)) s"; exit 0; fi
+            sleep 3
+          done
+          echo "Environment did not become ready"; docker compose -f customer-env/docker-compose.yml ps -a; exit 1
+
+      - name: Verify the deployment and its controls
+        env:
+          REAL_KEY_PROVIDED: ${{ secrets.SHAREDLLM_KEY != '' && 'yes' || '' }}
+        run: bash scripts/verify_environment.sh
+
+      - name: Show service status and logs (evidence)
+        if: always()
+        run: |
+          docker compose -f customer-env/docker-compose.yml ps -a
+          for s in vault-init egress-proxy app ingress; do
+            echo "::group::logs: $s"; docker compose -f customer-env/docker-compose.yml logs --no-color "$s" | tail -n 60; echo "::endgroup::"
+          done
+
+      - name: Tear down
+        if: always()
+        run: docker compose -f customer-env/docker-compose.yml down -v
